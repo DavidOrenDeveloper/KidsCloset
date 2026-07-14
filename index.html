@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>ארון הילדים - מעקב בגדים</title>
+<meta name="theme-color" content="#2E9E8F" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="ארון הילדים" />
+<meta name="mobile-web-app-capable" content="yes" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&family=Roboto+Mono:wght@500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 3c-1.1 0-2 .9-2 2 0 .35.1.67.26.95L3 10.5 4.2 13l3.3-1.47V19c0 1.1.9 2 2 2h5c1.1 0 2-.9 2-2v-7.47L19.8 13 21 10.5l-7.26-4.55c.16-.28.26-.6.26-.95 0-1.1-.9-2-2-2z" fill="currentColor"/></svg>
+      </span>
+      <h1>ארון הילדים</h1>
+    </div>
+    <button id="btnMenu" class="icon-btn" aria-label="תפריט">
+      <svg viewBox="0 0 24 24" width="24" height="24"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- Side menu -->
+<div id="sideMenuOverlay" class="overlay hidden"></div>
+<nav id="sideMenu" class="side-menu hidden">
+  <button class="menu-item" id="menuManageChildren">
+    <span class="menu-emoji">👧🧒</span> ניהול ילדים
+  </button>
+  <button class="menu-item" id="menuManageCategories">
+    <span class="menu-emoji">🏷️</span> ניהול קטגוריות
+  </button>
+  <button class="menu-item" id="menuExport">
+    <span class="menu-emoji">⬇️</span> ייצוא גיבוי (JSON)
+  </button>
+  <button class="menu-item" id="menuImport">
+    <span class="menu-emoji">⬆️</span> ייבוא / שחזור גיבוי
+  </button>
+  <input type="file" id="importFileInput" accept="application/json" class="hidden" />
+</nav>
+
+<main class="app-main">
+
+  <!-- Filters bar -->
+  <section class="filters-bar" id="filtersBar">
+    <div class="filter-row">
+      <select id="filterChild" class="filter-select"><option value="">כל הילדים</option></select>
+      <select id="filterCategory" class="filter-select"><option value="">כל הקטגוריות</option></select>
+    </div>
+    <div class="filter-row">
+      <select id="filterSeason" class="filter-select">
+        <option value="">כל העונות</option>
+        <option value="קיץ">קיץ</option>
+        <option value="חורף">חורף</option>
+        <option value="בין עונות">בין עונות</option>
+      </select>
+      <select id="filterStatus" class="filter-select">
+        <option value="">כל הסטטוסים</option>
+        <option value="בשימוש כרגע">בשימוש כרגע</option>
+        <option value="מאוחסן לשנה הבאה">מאוחסן לשנה הבאה</option>
+        <option value="קטן מדי / להעברה">קטן מדי / להעברה</option>
+        <option value="נמכר / נתרם">נמכר / נתרם</option>
+      </select>
+    </div>
+    <div class="filter-row">
+      <input type="search" id="filterSearch" class="filter-search" placeholder="חיפוש חופשי (צבע, מידה, הערה...)" />
+    </div>
+  </section>
+
+  <section class="summary-bar" id="summaryBar"></section>
+
+  <section id="itemsGrid" class="items-grid"></section>
+
+  <div id="emptyState" class="empty-state hidden">
+    <div class="empty-illustration">🧺</div>
+    <h2>הארון עדיין ריק</h2>
+    <p>הוסיפו את הילד/ה הראשונים, ואז את פריט הלבוש הראשון שקניתם.</p>
+  </div>
+
+</main>
+
+<button id="btnAddItem" class="fab" aria-label="הוספת פריט">
+  <svg viewBox="0 0 24 24" width="28" height="28"><path d="M12 4v16M4 12h16" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>
+</button>
+
+<!-- Add / Edit Item Modal -->
+<div id="itemModalOverlay" class="overlay hidden"></div>
+<div id="itemModal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-header">
+    <h2 id="itemModalTitle">פריט חדש</h2>
+    <button class="icon-btn" id="itemModalClose" aria-label="סגירה">✕</button>
+  </div>
+  <div class="modal-body">
+    <form id="itemForm">
+      <input type="hidden" id="itemId" />
+
+      <label class="field-label">תמונת הפריט</label>
+      <div class="photo-picker" id="photoPicker">
+        <img id="photoPreview" class="photo-preview hidden" alt="תצוגה מקדימה" />
+        <div id="photoPlaceholder" class="photo-placeholder">
+          <span>📷</span>
+          <span>הוספת תמונה</span>
+        </div>
+      </div>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" />
+      <div class="photo-actions">
+        <button type="button" id="btnRemovePhoto" class="btn-text hidden">הסרת תמונה</button>
+      </div>
+
+      <label class="field-label" for="itemChild">שייך לילד/ה *</label>
+      <select id="itemChild" required></select>
+
+      <label class="field-label" for="itemCategory">קטגוריה *</label>
+      <select id="itemCategory" required></select>
+
+      <div class="field-row">
+        <div class="field-col">
+          <label class="field-label" for="itemSize">מידה (לא חובה)</label>
+          <input type="text" id="itemSize" placeholder="לדוגמה: 98/104" />
+        </div>
+        <div class="field-col">
+          <label class="field-label" for="itemColor">צבע ראשי</label>
+          <input type="text" id="itemColor" placeholder="לדוגמה: כחול" />
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field-col">
+          <label class="field-label" for="itemSeason">עונה</label>
+          <select id="itemSeason">
+            <option value="קיץ">קיץ</option>
+            <option value="חורף">חורף</option>
+            <option value="בין עונות">בין עונות</option>
+          </select>
+        </div>
+        <div class="field-col">
+          <label class="field-label" for="itemStatus">סטטוס</label>
+          <select id="itemStatus">
+            <option value="בשימוש כרגע">בשימוש כרגע</option>
+            <option value="מאוחסן לשנה הבאה">מאוחסן לשנה הבאה</option>
+            <option value="קטן מדי / להעברה">קטן מדי / להעברה</option>
+            <option value="נמכר / נתרם">נמכר / נתרם</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="field-label" for="itemPrice">מחיר (₪)</label>
+      <input type="number" id="itemPrice" min="0" step="0.1" placeholder="0" inputmode="decimal" />
+
+      <label class="field-label" for="itemNote">הערה (לא חובה)</label>
+      <textarea id="itemNote" rows="2" placeholder="הערה חופשית..."></textarea>
+
+      <div class="modal-footer">
+        <button type="button" id="btnDeleteItem" class="btn-danger hidden">מחיקת פריט</button>
+        <button type="submit" class="btn-primary">שמירה</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Manage Children Modal -->
+<div id="childrenModalOverlay" class="overlay hidden"></div>
+<div id="childrenModal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-header">
+    <h2>ניהול ילדים</h2>
+    <button class="icon-btn" id="childrenModalClose" aria-label="סגירה">✕</button>
+  </div>
+  <div class="modal-body">
+    <div class="add-inline-row">
+      <input type="text" id="newChildName" placeholder="שם הילד/ה" />
+      <button id="btnAddChild" class="btn-primary btn-small">הוספה</button>
+    </div>
+    <ul id="childrenList" class="manage-list"></ul>
+  </div>
+</div>
+
+<!-- Manage Categories Modal -->
+<div id="categoriesModalOverlay" class="overlay hidden"></div>
+<div id="categoriesModal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-header">
+    <h2>ניהול קטגוריות</h2>
+    <button class="icon-btn" id="categoriesModalClose" aria-label="סגירה">✕</button>
+  </div>
+  <div class="modal-body">
+    <div class="add-inline-row">
+      <input type="text" id="newCategoryName" placeholder="שם קטגוריה (למשל: חולצות)" />
+      <button id="btnAddCategory" class="btn-primary btn-small">הוספה</button>
+    </div>
+    <ul id="categoriesList" class="manage-list"></ul>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- Confirm dialog -->
+<div id="confirmOverlay" class="overlay hidden"></div>
+<div id="confirmDialog" class="confirm-dialog hidden" role="alertdialog" aria-modal="true">
+  <p id="confirmMessage"></p>
+  <div class="confirm-actions">
+    <button id="confirmCancel" class="btn-text">ביטול</button>
+    <button id="confirmOk" class="btn-danger">אישור</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
