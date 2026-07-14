@@ -727,11 +727,42 @@
   const getSettings = () => readLS(LS_SETTINGS, {});
   const setSettings = (v) => writeLS(LS_SETTINGS, v);
 
-  $("#btnSaveApiKey").addEventListener("click", () => {
+  // Validates a Gemini API key by calling Google's endpoint directly.
+  // No format/prefix check is done here on purpose: Google currently issues
+  // both legacy "AIza..." (Standard) keys and newer "AQ.Ab..." (Auth) keys,
+  // and both are valid - the only real test is whether Google accepts it.
+  async function testGeminiApiKey(key) {
+    try {
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1", {
+        method: "GET",
+        headers: { "x-goog-api-key": key }
+      });
+      if (res.ok) return { ok: true };
+      const errText = await res.text().catch(() => "");
+      return { ok: false, status: res.status, errText };
+    } catch (e) {
+      return { ok: false, status: null, errText: String(e) };
+    }
+  }
+
+  $("#btnSaveApiKey").addEventListener("click", async () => {
     const key = $("#aiApiKeyInput").value.trim();
     setSettings({ ...getSettings(), apiKey: key });
     closeModal("aiSettingsModal");
-    toast(key ? "המפתח נשמר על המכשיר בלבד" : "לא נשמר מפתח");
+
+    if (!key) {
+      toast("לא נשמר מפתח");
+      return;
+    }
+
+    toast("המפתח נשמר, בודק חיבור ל-Gemini...", 4000);
+    const result = await testGeminiApiKey(key);
+    if (result.ok) {
+      toast("✅ המפתח נשמר והחיבור ל-Gemini הצליח!", 4000);
+    } else {
+      console.error("Gemini key test failed:", result.status, result.errText);
+      toast(`⚠️ המפתח נשמר, אך הבדיקה נכשלה (קוד ${result.status || "?"}). ודאו שהמפתח תקין ופעיל.`, 6000);
+    }
   });
   $("#btnClearApiKey").addEventListener("click", () => {
     setSettings({ ...getSettings(), apiKey: "" });
