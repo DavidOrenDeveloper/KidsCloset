@@ -202,6 +202,11 @@
   let currentPhotoDataUrl = null; // holds newly picked/compressed photo for the open item form
   let photoRemoved = false;
 
+  /* ---------- Multi-select state (for bulk move/delete) ---------- */
+  let selectionMode = false;
+  let selectedIds = new Set();
+  let suppressNextCardClick = false; // guards against a stray click landing on a re-rendered card right after a long-press
+
   /* ---------- Rendering: dropdowns ---------- */
   function fillSelectOptions(select, list, placeholder, keepValue) {
     const prev = keepValue !== undefined ? keepValue : select.value;
@@ -265,6 +270,7 @@
     grid.innerHTML = "";
 
     $("#emptyState").classList.toggle("hidden", items.length > 0);
+    $("#btnToggleSelect").classList.toggle("hidden", items.length === 0 || selectionMode);
 
     const totalPrice = filtered.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
     $("#summaryBar").innerHTML = items.length
@@ -297,7 +303,33 @@
           </div>
         </div>
       `;
-      card.addEventListener("click", () => openItemModal(it.id));
+      card.classList.toggle("selectable", selectionMode);
+      card.classList.toggle("selected", selectedIds.has(it.id));
+
+      let pressTimer = null;
+      let longPressFired = false;
+      const startPress = () => {
+        longPressFired = false;
+        clearTimeout(pressTimer);
+        pressTimer = setTimeout(() => {
+          longPressFired = true;
+          suppressNextCardClick = true;
+          setTimeout(() => { suppressNextCardClick = false; }, 400);
+          if (navigator.vibrate) navigator.vibrate(15);
+          if (!selectionMode) enterSelectionMode(it.id);
+          else toggleItemSelection(it.id);
+        }, 500);
+      };
+      const cancelPress = () => clearTimeout(pressTimer);
+      card.addEventListener("pointerdown", startPress);
+      card.addEventListener("pointerup", cancelPress);
+      card.addEventListener("pointerleave", cancelPress);
+      card.addEventListener("pointercancel", cancelPress);
+      card.addEventListener("click", () => {
+        if (longPressFired || suppressNextCardClick) { longPressFired = false; return; } // suppress the click that follows a long-press
+        if (selectionMode) toggleItemSelection(it.id);
+        else openItemModal(it.id);
+      });
       grid.appendChild(card);
 
       const photoSlot = card.querySelector(".item-photo-slot");
@@ -319,6 +351,95 @@
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     }[c]));
   }
+
+  /* ---------- Multi-select: bulk move / bulk delete ---------- */
+  function updateSelectionUI() {
+    $("#selectionBar").classList.toggle("hidden", !selectionMode);
+    $("#selectionActionBar").classList.toggle("hidden", !selectionMode || selectedIds.size === 0);
+    $("#selectionCount").textContent = `נבחרו ${selectedIds.size} פריטים`;
+    $("#selectionActionButtons").classList.remove("hidden");
+    $("#selectionMovePanel").classList.add("hidden");
+  }
+
+  function enterSelectionMode(firstId) {
+    if (selectionMode) return;
+    selectionMode = true;
+    selectedIds = new Set(firstId ? [firstId] : []);
+    $("#btnAddItem").classList.add("hidden");
+    updateSelectionUI();
+    renderItems();
+    // Back button exits selection mode instead of leaving the page.
+    pushUiState(() => {
+      selectionMode = false;
+      selectedIds.clear();
+      $("#btnAddItem").classList.remove("hidden");
+      updateSelectionUI();
+      renderItems();
+    });
+  }
+
+  function exitSelectionMode() {
+    if (!selectionMode) return;
+    closeTopUiLayer();
+  }
+
+  function toggleItemSelection(id) {
+    if (selectedIds.has(id)) selectedIds.delete(id);
+    else selectedIds.add(id);
+    if (selectedIds.size === 0) { exitSelectionMode(); return; }
+    updateSelectionUI();
+    $all(".item-card").forEach((card) => card.classList.toggle("selected", selectedIds.has(card.dataset.id)));
+  }
+
+  $("#btnToggleSelect").addEventListener("click", () => enterSelectionMode(null));
+  $("#btnCancelSelect").addEventListener("click", () => exitSelectionMode());
+  $("#btnSelectAll").addEventListener("click", () => {
+    const ids = $all(".item-card").map((c) => c.dataset.id);
+    if (!ids.length) return;
+    if (!selectionMode) enterSelectionMode(null);
+    selectedIds = new Set(ids);
+    updateSelectionUI();
+    $all(".item-card").forEach((card) => card.classList.add("selected"));
+  });
+
+  $("#btnBulkDelete").addEventListener("click", async () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    const sure = await confirmDialog(`למחוק ${ids.length} פריטים נבחרים? הפעולה אינה הפיכה.`);
+    if (!sure) return;
+    const items = getItems();
+    const toDelete = items.filter((i) => ids.includes(i.id));
+    for (const it of toDelete) {
+      if (it.imageId) await idbDelete(it.imageId);
+    }
+    setItems(items.filter((i) => !ids.includes(i.id)));
+    toast(`${ids.length} פריטים נמחקו`);
+    renderItems();
+    exitSelectionMode();
+  });
+
+  $("#btnBulkMove").addEventListener("click", () => {
+    const categories = getCategories();
+    if (!categories.length) { toast("אין קטגוריות. הוסיפו קטגוריה קודם (מהתפריט ☰)"); return; }
+    fillSelectOptions($("#bulkMoveCategorySelect"), categories, null);
+    $("#selectionActionButtons").classList.add("hidden");
+    $("#selectionMovePanel").classList.remove("hidden");
+  });
+  $("#btnBulkMoveCancel").addEventListener("click", () => {
+    $("#selectionMovePanel").classList.add("hidden");
+    $("#selectionActionButtons").classList.remove("hidden");
+  });
+  $("#btnBulkMoveConfirm").addEventListener("click", () => {
+    const catId = $("#bulkMoveCategorySelect").value;
+    if (!catId) { toast("יש לבחור קטגוריה"); return; }
+    const ids = Array.from(selectedIds);
+    const items = getItems();
+    const updated = items.map((i) => (ids.includes(i.id) ? { ...i, categoryId: catId, updatedAt: Date.now() } : i));
+    setItems(updated);
+    toast(`${ids.length} פריטים הועברו`);
+    renderItems();
+    exitSelectionMode();
+  });
 
   /* ---------- Item modal (add/edit) ---------- */
   function openItemModal(itemId) {
@@ -608,8 +729,8 @@
 
   $("#btnSaveApiKey").addEventListener("click", () => {
     const key = $("#aiApiKeyInput").value.trim();
-    if (key && !key.startsWith("sk-ant-")) {
-      toast('מפתחות של Anthropic מתחילים ב-"sk-ant-", בדקו שההעתקה תקינה');
+    if (key && !key.startsWith("AIza")) {
+      toast('מפתחות של Google Gemini מתחילים ב-"AIza", בדקו שההעתקה תקינה');
       return;
     }
     setSettings({ ...getSettings(), apiKey: key });
@@ -718,18 +839,15 @@ ${JSON.stringify(simplified)}
 החזר אך ורק אובייקט JSON תקין, ללא טקסט נוסף וללא markdown, בפורמט:
 {"itemIds": ["id1","id2", ...], "reasoning": "משפט קצר בעברית שמסביר את הבחירה"}`;
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
+        "x-goog-api-key": apiKey
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 500,
-        messages: [{ role: "user", content: prompt }]
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 500, responseMimeType: "application/json" }
       })
     });
 
@@ -738,7 +856,8 @@ ${JSON.stringify(simplified)}
       throw new Error(`AI request failed (${response.status}): ${errText}`);
     }
     const data = await response.json();
-    const text = (data.content || []).map((b) => b.text || "").join("").trim();
+    const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+    const text = parts.map((p) => p.text || "").join("").trim();
     const clean = text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(clean);
     const idSet = new Set(parsed.itemIds || []);
@@ -762,6 +881,8 @@ ${JSON.stringify(simplified)}
     result.chosen.forEach(({ categoryId, item }) => {
       const row = document.createElement("div");
       row.className = "outfit-item-row";
+      row.setAttribute("role", "button");
+      row.setAttribute("tabindex", "0");
       row.innerHTML = `
         <div class="outfit-item-photo-slot"></div>
         <div class="outfit-item-text">
@@ -769,6 +890,9 @@ ${JSON.stringify(simplified)}
           <span class="outfit-item-meta">${escapeHtml(item.color || "")}${item.size ? " · מידה " + escapeHtml(item.size) : ""}</span>
         </div>
       `;
+      // Opens the item's own page stacked on top of the outfit suggestion;
+      // the Android/browser back button returns here without closing this modal.
+      row.addEventListener("click", () => openItemModal(item.id));
       box.appendChild(row);
       const slot = row.querySelector(".outfit-item-photo-slot");
       if (item.imageId) {
@@ -893,14 +1017,49 @@ ${JSON.stringify(simplified)}
     }
   }
 
+  /* ---------- Back-button aware UI stack ---------- */
+  // Every modal pushes a browser-history entry when it opens. Pressing the
+  // Android/browser back button then closes just that layer instead of
+  // leaving the app - and when one modal is opened on top of another (e.g.
+  // tapping an item inside an outfit suggestion), back closes them one at a
+  // time, returning to whatever was open underneath.
+  let uiStack = [];
+
+  function pushUiState(closer) {
+    uiStack.push(closer);
+    history.pushState({ kcLayer: uiStack.length }, "");
+  }
+
+  function closeTopUiLayer() {
+    // Always goes through history.back() so the popstate handler below is the
+    // single place that actually hides a layer - keeping the stack and the
+    // browser history in sync whether the close was triggered by an "X"
+    // button, an overlay tap, or the hardware back button itself.
+    if (uiStack.length > 0) history.back();
+  }
+
+  window.addEventListener("popstate", () => {
+    const closer = uiStack.pop();
+    if (closer) closer();
+  });
+
   /* ---------- Modal helpers (generic overlay/panel pairs) ---------- */
   function showModal(name) {
-    $(`#${name}Overlay`).classList.remove("hidden");
-    $(`#${name}`).classList.remove("hidden");
+    const overlay = $(`#${name}Overlay`);
+    const modal = $(`#${name}`);
+    // Re-append so a modal opened on top of another paints above it, even
+    // though every modal shares the same z-index.
+    document.body.appendChild(overlay);
+    document.body.appendChild(modal);
+    overlay.classList.remove("hidden");
+    modal.classList.remove("hidden");
+    pushUiState(() => {
+      overlay.classList.add("hidden");
+      modal.classList.add("hidden");
+    });
   }
   function closeModal(name) {
-    $(`#${name}Overlay`).classList.add("hidden");
-    $(`#${name}`).classList.add("hidden");
+    closeTopUiLayer();
   }
 
   ["itemModal", "childrenModal", "categoriesModal", "outfitModal", "aiSettingsModal"].forEach((name) => {

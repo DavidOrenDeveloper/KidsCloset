@@ -86,9 +86,30 @@
     </div>
   </section>
 
-  <section class="summary-bar" id="summaryBar"></section>
+  <div class="list-toolbar">
+    <section class="summary-bar" id="summaryBar"></section>
+    <button type="button" id="btnToggleSelect" class="select-toggle-btn hidden">בחירה</button>
+  </div>
+
+  <div id="selectionBar" class="selection-bar hidden">
+    <button type="button" id="btnCancelSelect" class="icon-btn" aria-label="ביטול בחירה">✕</button>
+    <span id="selectionCount" class="selection-count">נבחרו 0 פריטים</span>
+    <button type="button" id="btnSelectAll" class="selection-link-btn">בחירת הכל</button>
+  </div>
 
   <section id="itemsGrid" class="items-grid"></section>
+
+  <div id="selectionActionBar" class="selection-action-bar hidden">
+    <div id="selectionActionButtons" class="selection-action-buttons">
+      <button type="button" id="btnBulkMove" class="btn-secondary">📁 העברה לקטגוריה</button>
+      <button type="button" id="btnBulkDelete" class="btn-danger">🗑️ מחיקה</button>
+    </div>
+    <div id="selectionMovePanel" class="selection-move-panel hidden">
+      <select id="bulkMoveCategorySelect"></select>
+      <button type="button" id="btnBulkMoveConfirm" class="btn-primary btn-small">העברה</button>
+      <button type="button" id="btnBulkMoveCancel" class="btn-text">ביטול</button>
+    </div>
+  </div>
 
   <div id="emptyState" class="empty-state hidden">
     <div class="empty-illustration">🧺</div>
@@ -233,7 +254,7 @@
       <option value="בין עונות">בין עונות</option>
     </select>
 
-    <p id="outfitAiNote" class="hint-text hidden">✨ מופעל עם Claude AI לפי המפתח ששמרתם.</p>
+    <p id="outfitAiNote" class="hint-text hidden">✨ מופעל עם Gemini AI לפי המפתח ששמרתם.</p>
 
     <button type="button" id="btnGenerateOutfit" class="btn-primary" style="margin-top:16px;">הצעת תלבושת</button>
 
@@ -253,12 +274,12 @@
   <div class="modal-body">
     <p class="hint-text">
       התאמת התלבושת עובדת מצוין גם בלי זה, לפי צבע וקטגוריה בלבד.
-      אם תרצו הצעות חכמות יותר בשפה טבעית, אפשר לחבר מפתח API אישי של Anthropic.
-      המפתח נשמר <b>רק</b> על המכשיר שלכם (localStorage) ונשלח ישירות מהדפדפן ל-Anthropic - לא דרך שום שרת שלנו.
-      אפשר ליצור מפתח בכתובת console.anthropic.com.
+      אם תרצו הצעות חכמות יותר בשפה טבעית, אפשר לחבר מפתח API אישי וחינמי של Google Gemini.
+      המפתח נשמר <b>רק</b> על המכשיר שלכם (localStorage) ונשלח ישירות מהדפדפן ל-Google - לא דרך שום שרת שלנו.
+      אפשר ליצור מפתח בחינם בכתובת aistudio.google.com/apikey (כניסה עם חשבון Google).
     </p>
-    <label class="field-label" for="aiApiKeyInput">מפתח API (מתחיל ב-sk-ant-)</label>
-    <input type="text" id="aiApiKeyInput" placeholder="sk-ant-..." style="width:100%; font-family:inherit; font-size:14px; padding:11px 12px; border:1px solid var(--line); border-radius:9px; background:var(--bg);" />
+    <label class="field-label" for="aiApiKeyInput">מפתח API של Gemini (מתחיל ב-AIza)</label>
+    <input type="text" id="aiApiKeyInput" placeholder="AIza..." style="width:100%; font-family:inherit; font-size:14px; padding:11px 12px; border:1px solid var(--line); border-radius:9px; background:var(--bg);" />
     <div class="modal-footer">
       <button type="button" id="btnClearApiKey" class="btn-danger">מחיקת מפתח</button>
       <button type="button" id="btnSaveApiKey" class="btn-primary">שמירה</button>
