@@ -42,6 +42,13 @@
   <button class="menu-item" id="menuManageCategories">
     <span class="menu-emoji">🏷️</span> ניהול קטגוריות
   </button>
+  <button class="menu-item" id="menuOutfitMatcher">
+    <span class="menu-emoji">🎽</span> התאמת תלבושת
+  </button>
+  <button class="menu-item" id="menuAiSettings">
+    <span class="menu-emoji">✨</span> הגדרות AI (אופציונלי)
+  </button>
+  <div class="menu-divider"></div>
   <button class="menu-item" id="menuExport">
     <span class="menu-emoji">⬇️</span> ייצוא גיבוי (JSON)
   </button>
@@ -110,11 +117,16 @@
       <div class="photo-picker" id="photoPicker">
         <img id="photoPreview" class="photo-preview hidden" alt="תצוגה מקדימה" />
         <div id="photoPlaceholder" class="photo-placeholder">
-          <span>📷</span>
-          <span>הוספת תמונה</span>
+          <span>🧥</span>
+          <span>אין תמונה עדיין</span>
         </div>
       </div>
-      <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" />
+      <div class="photo-source-row">
+        <button type="button" id="btnTakePhoto" class="btn-secondary">📷 צילום תמונה</button>
+        <button type="button" id="btnChooseGallery" class="btn-secondary">🖼️ בחירה מהגלריה</button>
+      </div>
+      <input type="file" id="photoInputCamera" accept="image/*" capture="environment" class="hidden" />
+      <input type="file" id="photoInputGallery" accept="image/*" class="hidden" />
       <div class="photo-actions">
         <button type="button" id="btnRemovePhoto" class="btn-text hidden">הסרת תמונה</button>
       </div>
@@ -199,6 +211,58 @@
       <button id="btnAddCategory" class="btn-primary btn-small">הוספה</button>
     </div>
     <ul id="categoriesList" class="manage-list"></ul>
+  </div>
+</div>
+
+<!-- Outfit Matcher Modal -->
+<div id="outfitModalOverlay" class="overlay hidden"></div>
+<div id="outfitModal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-header">
+    <h2>🎽 התאמת תלבושת</h2>
+    <button class="icon-btn" id="outfitModalClose" aria-label="סגירה">✕</button>
+  </div>
+  <div class="modal-body">
+    <label class="field-label" for="outfitChild">עבור מי?</label>
+    <select id="outfitChild"></select>
+
+    <label class="field-label" for="outfitSeason">עונה</label>
+    <select id="outfitSeason">
+      <option value="">כל העונות</option>
+      <option value="קיץ">קיץ</option>
+      <option value="חורף">חורף</option>
+      <option value="בין עונות">בין עונות</option>
+    </select>
+
+    <p id="outfitAiNote" class="hint-text hidden">✨ מופעל עם Claude AI לפי המפתח ששמרתם.</p>
+
+    <button type="button" id="btnGenerateOutfit" class="btn-primary" style="margin-top:16px;">הצעת תלבושת</button>
+
+    <div id="outfitResult" class="outfit-result"></div>
+
+    <button type="button" id="btnRegenerateOutfit" class="btn-secondary hidden" style="width:100%; margin-top:10px;">🔀 הצעה אחרת</button>
+  </div>
+</div>
+
+<!-- AI Settings Modal -->
+<div id="aiSettingsModalOverlay" class="overlay hidden"></div>
+<div id="aiSettingsModal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-header">
+    <h2>✨ הגדרות AI</h2>
+    <button class="icon-btn" id="aiSettingsModalClose" aria-label="סגירה">✕</button>
+  </div>
+  <div class="modal-body">
+    <p class="hint-text">
+      התאמת התלבושת עובדת מצוין גם בלי זה, לפי צבע וקטגוריה בלבד.
+      אם תרצו הצעות חכמות יותר בשפה טבעית, אפשר לחבר מפתח API אישי של Anthropic.
+      המפתח נשמר <b>רק</b> על המכשיר שלכם (localStorage) ונשלח ישירות מהדפדפן ל-Anthropic - לא דרך שום שרת שלנו.
+      אפשר ליצור מפתח בכתובת console.anthropic.com.
+    </p>
+    <label class="field-label" for="aiApiKeyInput">מפתח API (מתחיל ב-sk-ant-)</label>
+    <input type="text" id="aiApiKeyInput" placeholder="sk-ant-..." style="width:100%; font-family:inherit; font-size:14px; padding:11px 12px; border:1px solid var(--line); border-radius:9px; background:var(--bg);" />
+    <div class="modal-footer">
+      <button type="button" id="btnClearApiKey" class="btn-danger">מחיקת מפתח</button>
+      <button type="button" id="btnSaveApiKey" class="btn-primary">שמירה</button>
+    </div>
   </div>
 </div>
 

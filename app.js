@@ -370,10 +370,10 @@
     showModal("itemModal");
   }
 
-  $("#photoPicker").addEventListener("click", () => $("#photoInput").click());
+  $("#btnTakePhoto").addEventListener("click", () => $("#photoInputCamera").click());
+  $("#btnChooseGallery").addEventListener("click", () => $("#photoInputGallery").click());
 
-  $("#photoInput").addEventListener("change", async (e) => {
-    const file = e.target.files[0];
+  async function handlePhotoFile(file) {
     if (!file) return;
     try {
       toast("מעבד תמונה...", 1000);
@@ -387,9 +387,16 @@
     } catch (err) {
       console.error(err);
       toast("שגיאה בעיבוד התמונה");
-    } finally {
-      e.target.value = "";
     }
+  }
+
+  $("#photoInputCamera").addEventListener("change", (e) => {
+    handlePhotoFile(e.target.files[0]);
+    e.target.value = "";
+  });
+  $("#photoInputGallery").addEventListener("change", (e) => {
+    handlePhotoFile(e.target.files[0]);
+    e.target.value = "";
   });
 
   $("#btnRemovePhoto").addEventListener("click", (e) => {
@@ -594,6 +601,220 @@
     toast("נמחקה");
   });
 
+  /* ---------- AI settings (optional, user's own API key) ---------- */
+  const LS_SETTINGS = "kc_settings";
+  const getSettings = () => readLS(LS_SETTINGS, {});
+  const setSettings = (v) => writeLS(LS_SETTINGS, v);
+
+  $("#btnSaveApiKey").addEventListener("click", () => {
+    const key = $("#aiApiKeyInput").value.trim();
+    if (key && !key.startsWith("sk-ant-")) {
+      toast('מפתחות של Anthropic מתחילים ב-"sk-ant-", בדקו שההעתקה תקינה');
+      return;
+    }
+    setSettings({ ...getSettings(), apiKey: key });
+    closeModal("aiSettingsModal");
+    toast(key ? "המפתח נשמר על המכשיר בלבד" : "לא נשמר מפתח");
+  });
+  $("#btnClearApiKey").addEventListener("click", () => {
+    setSettings({ ...getSettings(), apiKey: "" });
+    $("#aiApiKeyInput").value = "";
+    toast("המפתח נמחק");
+  });
+
+  /* ---------- Outfit matcher ---------- */
+  // Basic Hebrew color-name -> family map, used for offline (no AI) matching.
+  const COLOR_FAMILIES = {
+    "לבן": "ניטרלי", "שחור": "ניטרלי", "אפור": "ניטרלי", "בז'": "ניטרלי", "בז": "ניטרלי",
+    "קרם": "ניטרלי", "חום": "ניטרלי", "ניוד": "ניטרלי",
+    "כחול": "קריר", "תכלת": "קריר", "טורקיז": "קריר", "ירוק": "קריר", "מנטה": "קריר", "סגול": "קריר",
+    "אדום": "חם", "ורוד": "חם", "כתום": "חם", "בורדו": "חם", "צהוב": "חם", "פוקסיה": "חם", "חרדל": "חם"
+  };
+  function colorFamily(colorStr) {
+    if (!colorStr) return "ניטרלי";
+    const clean = colorStr.trim().toLowerCase();
+    for (const key of Object.keys(COLOR_FAMILIES)) {
+      if (clean.includes(key)) return COLOR_FAMILIES[key];
+    }
+    return "לא ידוע";
+  }
+
+  function openOutfitMatcher() {
+    const children = getChildren();
+    if (!children.length) {
+      toast("יש להוסיף קודם ילד/ה (מהתפריט ☰)");
+      return;
+    }
+    fillSelectOptions($("#outfitChild"), children, null);
+    $("#outfitResult").innerHTML = "";
+    $("#btnRegenerateOutfit").classList.add("hidden");
+    const hasKey = !!getSettings().apiKey;
+    $("#outfitAiNote").classList.toggle("hidden", !hasKey);
+    showModal("outfitModal");
+  }
+
+  function eligibleItemsFor(childId, season) {
+    return getItems().filter((it) =>
+      it.childId === childId &&
+      it.status === "בשימוש כרגע" &&
+      (!season || it.season === season || it.season === "בין עונות")
+    );
+  }
+
+  function heuristicOutfit(items, categories) {
+    const byCategory = {};
+    items.forEach((it) => {
+      const key = it.categoryId || "ללא קטגוריה";
+      (byCategory[key] = byCategory[key] || []).push(it);
+    });
+    const catKeys = Object.keys(byCategory);
+    if (!catKeys.length) return null;
+
+    // find the dominant color family among all eligible items to use as an anchor
+    const familyCount = {};
+    items.forEach((it) => {
+      const f = colorFamily(it.color);
+      familyCount[f] = (familyCount[f] || 0) + 1;
+    });
+    let baseFamily = "ניטרלי";
+    let max = -1;
+    Object.entries(familyCount).forEach(([f, count]) => {
+      if (f !== "לא ידוע" && count > max) { max = count; baseFamily = f; }
+    });
+
+    const chosen = [];
+    catKeys.forEach((catKey) => {
+      const options = byCategory[catKey];
+      const matching = options.filter((it) => {
+        const f = colorFamily(it.color);
+        return f === "ניטרלי" || f === baseFamily;
+      });
+      const pool = matching.length ? matching : options;
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      chosen.push({ categoryId: catKey === "ללא קטגוריה" ? null : catKey, item: pick });
+    });
+
+    const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c.name]));
+    const catNames = chosen.map((c) => categoryMap[c.categoryId] || "ללא קטגוריה");
+    const reasoning = `שילוב בגוון ${baseFamily === "לא ידוע" ? "מגוון" : baseFamily} שמחבר בין ${catNames.join(", ")}, מתוך הפריטים שמסומנים "בשימוש כרגע".`;
+
+    return { chosen, reasoning };
+  }
+
+  async function aiOutfit(items, categories, apiKey) {
+    const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c.name]));
+    const simplified = items.map((it) => ({
+      id: it.id,
+      category: categoryMap[it.categoryId] || "ללא קטגוריה",
+      color: it.color || "לא צוין",
+      size: it.size || "",
+      season: it.season || ""
+    }));
+
+    const prompt = `אתה עוזר סטיילינג לילדים. הנה רשימת פריטי לבוש זמינים בפורמט JSON:
+${JSON.stringify(simplified)}
+
+בחר פריט אחד (לכל היותר) מכל קטגוריה קיימת, כך שהצבעים משתלבים יפה יחד ליצירת תלבושת הגיונית לילד/ה.
+החזר אך ורק אובייקט JSON תקין, ללא טקסט נוסף וללא markdown, בפורמט:
+{"itemIds": ["id1","id2", ...], "reasoning": "משפט קצר בעברית שמסביר את הבחירה"}`;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 500,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      throw new Error(`AI request failed (${response.status}): ${errText}`);
+    }
+    const data = await response.json();
+    const text = (data.content || []).map((b) => b.text || "").join("").trim();
+    const clean = text.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(clean);
+    const idSet = new Set(parsed.itemIds || []);
+    const chosen = items
+      .filter((it) => idSet.has(it.id))
+      .map((it) => ({ categoryId: it.categoryId, item: it }));
+    return { chosen, reasoning: parsed.reasoning || "" };
+  }
+
+  function renderOutfitResult(result) {
+    const box = $("#outfitResult");
+    if (!result || !result.chosen.length) {
+      box.innerHTML = `<p style="color:var(--ink-soft); font-size:14px; text-align:center; padding:10px;">לא נמצאו מספיק פריטים "בשימוש כרגע" עבור הבחירה הזו.</p>`;
+      $("#btnRegenerateOutfit").classList.add("hidden");
+      return;
+    }
+    const categories = getCategories();
+    const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c.name]));
+
+    box.innerHTML = `<div class="outfit-reasoning">${escapeHtml(result.reasoning)}</div>`;
+    result.chosen.forEach(({ categoryId, item }) => {
+      const row = document.createElement("div");
+      row.className = "outfit-item-row";
+      row.innerHTML = `
+        <div class="outfit-item-photo-slot"></div>
+        <div class="outfit-item-text">
+          <span class="outfit-item-cat">${escapeHtml(categoryMap[categoryId] || "ללא קטגוריה")}</span>
+          <span class="outfit-item-meta">${escapeHtml(item.color || "")}${item.size ? " · מידה " + escapeHtml(item.size) : ""}</span>
+        </div>
+      `;
+      box.appendChild(row);
+      const slot = row.querySelector(".outfit-item-photo-slot");
+      if (item.imageId) {
+        slot.innerHTML = `<div class="outfit-item-photo-placeholder">⏳</div>`;
+        idbGet(item.imageId).then((url) => {
+          slot.innerHTML = url ? `<img class="outfit-item-photo" src="${url}" alt="" />` : `<div class="outfit-item-photo-placeholder">🧥</div>`;
+        });
+      } else {
+        slot.innerHTML = `<div class="outfit-item-photo-placeholder">🧥</div>`;
+      }
+    });
+    $("#btnRegenerateOutfit").classList.remove("hidden");
+  }
+
+  async function generateOutfit() {
+    const childId = $("#outfitChild").value;
+    if (!childId) { toast("יש לבחור ילד/ה"); return; }
+    const season = $("#outfitSeason").value;
+    const items = eligibleItemsFor(childId, season);
+    const categories = getCategories();
+
+    if (!items.length) {
+      renderOutfitResult(null);
+      return;
+    }
+
+    const apiKey = getSettings().apiKey;
+    $("#outfitResult").innerHTML = `<p style="text-align:center; color:var(--ink-soft); font-size:14px;">חושב על שילוב...</p>`;
+    $("#btnRegenerateOutfit").classList.add("hidden");
+
+    if (apiKey) {
+      try {
+        const result = await aiOutfit(items, categories, apiKey);
+        renderOutfitResult(result);
+        return;
+      } catch (e) {
+        console.error("AI outfit failed, falling back to offline matching:", e);
+        toast("קריאה ל-AI נכשלה, עובר להתאמה מקומית");
+      }
+    }
+    renderOutfitResult(heuristicOutfit(items, categories));
+  }
+
+  $("#btnGenerateOutfit").addEventListener("click", generateOutfit);
+  $("#btnRegenerateOutfit").addEventListener("click", generateOutfit);
+
   /* ---------- Export ---------- */
   async function exportData() {
     try {
@@ -682,12 +903,14 @@
     $(`#${name}`).classList.add("hidden");
   }
 
-  ["itemModal", "childrenModal", "categoriesModal"].forEach((name) => {
+  ["itemModal", "childrenModal", "categoriesModal", "outfitModal", "aiSettingsModal"].forEach((name) => {
     $(`#${name}Overlay`).addEventListener("click", () => closeModal(name));
   });
   $("#itemModalClose").addEventListener("click", () => closeModal("itemModal"));
   $("#childrenModalClose").addEventListener("click", () => closeModal("childrenModal"));
   $("#categoriesModalClose").addEventListener("click", () => closeModal("categoriesModal"));
+  $("#outfitModalClose").addEventListener("click", () => closeModal("outfitModal"));
+  $("#aiSettingsModalClose").addEventListener("click", () => closeModal("aiSettingsModal"));
 
   /* ---------- Side menu ---------- */
   function openSideMenu() {
@@ -710,6 +933,15 @@
     closeSideMenu();
     renderCategoriesList();
     showModal("categoriesModal");
+  });
+  $("#menuOutfitMatcher").addEventListener("click", () => {
+    closeSideMenu();
+    openOutfitMatcher();
+  });
+  $("#menuAiSettings").addEventListener("click", () => {
+    closeSideMenu();
+    $("#aiApiKeyInput").value = getSettings().apiKey || "";
+    showModal("aiSettingsModal");
   });
   $("#menuExport").addEventListener("click", () => {
     closeSideMenu();
