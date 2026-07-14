@@ -729,10 +729,6 @@
 
   $("#btnSaveApiKey").addEventListener("click", () => {
     const key = $("#aiApiKeyInput").value.trim();
-    if (key && !key.startsWith("AIza")) {
-      toast('מפתחות של Google Gemini מתחילים ב-"AIza", בדקו שההעתקה תקינה');
-      return;
-    }
     setSettings({ ...getSettings(), apiKey: key });
     closeModal("aiSettingsModal");
     toast(key ? "המפתח נשמר על המכשיר בלבד" : "לא נשמר מפתח");
