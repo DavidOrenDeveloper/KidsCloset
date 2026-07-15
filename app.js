@@ -866,7 +866,7 @@ ${JSON.stringify(simplified)}
 החזר אך ורק אובייקט JSON תקין, ללא טקסט נוסף וללא markdown, בפורמט:
 {"itemIds": ["id1","id2", ...], "reasoning": "משפט קצר בעברית שמסביר את הבחירה"}`;
 
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent", {
       method: "POST",
       headers: {
         "content-type": "application/json",
